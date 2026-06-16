@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>JS → Word Converter</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+
+    textarea {
+      width: 100%;
+      height: 300px;
+      margin-top: 10px;
+      font-family: Consolas, monospace;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 10px 15px;
+      cursor: pointer;
+    }
+
+    .box {
+      margin-top: 20px;
+    }
+  </style>
+
+  <!-- Librairie docx -->
+  <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+  <!-- file-saver -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+
+<body>
+
+<h1>Convertisseur JavaScript → Word</h1>
+
+<p>Importe un fichier JS :</p>
+<input type="file" id="fileInput" accept=".js">
+
+<div class="box">
+  <p>Aperçu du code :</p>
+  <textarea id="preview"></textarea>
+</div>
+
+<button onclick="generateWord()">Exporter en Word</button>
+
+<script>
+let jsCode = "";
+
+// Lecture du fichier JS
+document.getElementById("fileInput").addEventListener("change", function(e) {
+  const file = e.target.files[0];
+
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = function(event) {
+    jsCode = event.target.result;
+    document.getElementById("preview").value = jsCode;
+  };
+
+  reader.readAsText(file);
+});
+
+// Génération Word
+async function generateWord() {
+  if (!jsCode) {
+    alert("Veuillez importer un fichier JS d'abord !");
+    return;
+  }
+
+  const { Document, Packer, Paragraph, TextRun } = window.docx;
+
+  // On découpe le code ligne par ligne pour garder la mise en forme
+  const lines = jsCode.split("\n");
+
+  const doc = new Document({
+    sections: [
+      {
+        children: lines.map(line =>
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: line,
+                font: "Courier New"
+              })
+            ]
+          })
+        )
+      }
+    ]
+  });
+
+  const blob = await Packer.toBlob(doc);
+  saveAs(blob, "code-js.docx");
+}
+</script>
+
+</body>
+</html>
