@@ -1,0 +1,1137 @@
+const {
+  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+  Header, AlignmentType, HeadingLevel, BorderStyle, WidthType,
+  ShadingType, VerticalAlign, PageBreak, LevelFormat
+} = require('docx');
+const fs = require('fs');
+
+// ── Palette MHBTV ──────────────────────────────────────────
+const NAVY      = "1A2B5F";
+const GOLD      = "C8A84B";
+const LT_BLUE   = "E8EDF7";
+const LT_GOLD   = "FDF6E3";
+const LT_GREEN  = "E8F5E9";
+const LT_RED    = "FFEBEE";
+const WHITE     = "FFFFFF";
+const DARK      = "333333";
+const MID       = "555555";
+const GRAY      = "777777";
+
+// ── Helpers ────────────────────────────────────────────────
+const bd = { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" };
+const borders = { top: bd, bottom: bd, left: bd, right: bd };
+const noBd = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+const noBorders = { top: noBd, bottom: noBd, left: noBd, right: noBd };
+
+const sp = (before=160, after=0) =>
+  new Paragraph({ children:[new TextRun("")], spacing:{before,after} });
+
+const pgBreak = () => new Paragraph({ children:[new PageBreak()] });
+
+function h1(text) {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_1,
+    children: [new TextRun({ text, font:"Arial", size:32, bold:true, color:WHITE })],
+    shading: { fill:NAVY, type:ShadingType.CLEAR },
+    spacing: { before:400, after:200 },
+    indent: { left:160, right:160 },
+    border: { bottom:{ style:BorderStyle.SINGLE, size:8, color:GOLD, space:1 } }
+  });
+}
+function h2(text) {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    children: [new TextRun({ text, font:"Arial", size:26, bold:true, color:NAVY })],
+    spacing: { before:300, after:100 },
+    border: { bottom:{ style:BorderStyle.SINGLE, size:3, color:GOLD, space:2 } }
+  });
+}
+function h3(text) {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_3,
+    children: [new TextRun({ text, font:"Arial", size:23, bold:true, color:DARK })],
+    spacing: { before:200, after:80 }
+  });
+}
+function h4(text) {
+  return new Paragraph({
+    children: [new TextRun({ text, font:"Arial", size:22, bold:true, color:NAVY, underline:{} })],
+    spacing: { before:160, after:60 }
+  });
+}
+function p(text, opts={}) {
+  return new Paragraph({
+    children: [new TextRun({ text, font:"Arial", size:22, color:DARK, ...opts })],
+    spacing: { before:60, after:60 }
+  });
+}
+function pItalic(text, color=GRAY) {
+  return new Paragraph({
+    children: [new TextRun({ text, font:"Arial", size:20, color, italics:true })],
+    spacing: { before:40, after:40 }
+  });
+}
+function bul(text, ref="bul0") {
+  return new Paragraph({
+    numbering: { reference:ref, level:0 },
+    children: [new TextRun({ text, font:"Arial", size:22, color:DARK })],
+    spacing: { before:50, after:50 }
+  });
+}
+function bul2(text) {
+  return new Paragraph({
+    numbering: { reference:"bul1", level:0 },
+    children: [new TextRun({ text, font:"Arial", size:21, color:MID })],
+    spacing: { before:40, after:40 }
+  });
+}
+function num(text) {
+  return new Paragraph({
+    numbering: { reference:"num0", level:0 },
+    children: [new TextRun({ text, font:"Arial", size:22, color:DARK })],
+    spacing: { before:50, after:50 }
+  });
+}
+
+// ── Boîtes colorées ────────────────────────────────────────
+function box(icon, label, lines, fill=LT_BLUE, accent=NAVY) {
+  const children = [
+    new Paragraph({ children:[new TextRun({ text:`${icon}  ${label}`, font:"Arial", size:22, bold:true, color:accent })], spacing:{before:0,after:80} }),
+    ...lines.map(l => new Paragraph({ children:[new TextRun({ text:l, font:"Arial", size:21, color:DARK })], spacing:{before:40,after:40} }))
+  ];
+  return new Table({
+    width: { size:9026, type:WidthType.DXA },
+    columnWidths: [9026],
+    rows: [new TableRow({ children:[new TableCell({
+      borders: { top:{style:BorderStyle.SINGLE,size:6,color:accent}, bottom:bd, left:{style:BorderStyle.SINGLE,size:6,color:accent}, right:bd },
+      width: { size:9026, type:WidthType.DXA },
+      shading: { fill, type:ShadingType.CLEAR },
+      margins: { top:140, bottom:140, left:200, right:200 },
+      children
+    })]})],
+  });
+}
+
+function twoCol(left, right, fillL=LT_BLUE, fillR=LT_GOLD) {
+  const cell = (content, fill, w) => new TableCell({
+    borders,
+    width: { size:w, type:WidthType.DXA },
+    shading: { fill, type:ShadingType.CLEAR },
+    margins: { top:120, bottom:120, left:180, right:180 },
+    children: content
+  });
+  return new Table({
+    width: { size:9026, type:WidthType.DXA },
+    columnWidths: [4513,4513],
+    rows: [new TableRow({ children:[cell(left,fillL,4513), cell(right,fillR,4513)] })]
+  });
+}
+
+function moduleHeader(n, title, duration, audience) {
+  return new Table({
+    width: { size:9026, type:WidthType.DXA },
+    columnWidths: [9026],
+    rows: [new TableRow({ children:[new TableCell({
+      borders: noBorders,
+      width: { size:9026, type:WidthType.DXA },
+      shading: { fill:NAVY, type:ShadingType.CLEAR },
+      margins: { top:200, bottom:200, left:300, right:300 },
+      children:[
+        new Paragraph({ alignment:AlignmentType.CENTER, children:[new TextRun({ text:`MODULE ${n}`, font:"Arial", size:20, color:GOLD, bold:true, allCaps:true })] }),
+        new Paragraph({ alignment:AlignmentType.CENTER, spacing:{before:60,after:60}, children:[new TextRun({ text:title, font:"Arial", size:28, bold:true, color:WHITE })] }),
+        new Paragraph({ alignment:AlignmentType.CENTER, children:[new TextRun({ text:`${duration}  ·  ${audience}`, font:"Arial", size:19, color:GOLD, italics:true })] })
+      ]
+    })]})],
+  });
+}
+
+function planTable(rows) {
+  const hdr = (t,w) => new TableCell({ borders, width:{size:w,type:WidthType.DXA}, shading:{fill:NAVY,type:ShadingType.CLEAR}, margins:{top:100,bottom:100,left:120,right:120}, children:[new Paragraph({alignment:AlignmentType.CENTER, children:[new TextRun({text:t,font:"Arial",size:20,bold:true,color:WHITE})]})] });
+  const cel = (t,w,fill=WHITE) => new TableCell({ borders, width:{size:w,type:WidthType.DXA}, shading:{fill,type:ShadingType.CLEAR}, margins:{top:80,bottom:80,left:120,right:120}, children:[new Paragraph({children:[new TextRun({text:t,font:"Arial",size:21,color:DARK})]})] });
+  return new Table({
+    width:{size:9026,type:WidthType.DXA},
+    columnWidths:[800,1200,7026],
+    rows:[
+      new TableRow({ children:[hdr("N°",800),hdr("Durée",1200),hdr("Contenu",7026)] }),
+      ...rows.map((r,i) => new TableRow({ children:[
+        cel(String(i+1),800,i%2===0?LT_BLUE:WHITE),
+        cel(r[0],1200,i%2===0?LT_BLUE:WHITE),
+        cel(r[1],7026,i%2===0?LT_BLUE:WHITE)
+      ]}))
+    ]
+  });
+}
+
+function coverBanner(title, sub, audience, dur) {
+  return [
+    new Table({
+      width:{size:9026,type:WidthType.DXA}, columnWidths:[9026],
+      rows:[new TableRow({ children:[new TableCell({
+        borders:noBorders, width:{size:9026,type:WidthType.DXA},
+        shading:{fill:NAVY,type:ShadingType.CLEAR},
+        margins:{top:320,bottom:320,left:400,right:400},
+        children:[
+          new Paragraph({alignment:AlignmentType.CENTER, children:[new TextRun({text:"MEYLAN HANDBALL TV",font:"Arial",size:20,color:GOLD,bold:true,allCaps:true})]}),
+          new Paragraph({alignment:AlignmentType.CENTER, spacing:{before:80,after:80}, children:[new TextRun({text:title,font:"Arial",size:36,bold:true,color:WHITE})]}),
+          new Paragraph({alignment:AlignmentType.CENTER, children:[new TextRun({text:sub,font:"Arial",size:24,color:GOLD,italics:true})]})
+        ]
+      })]})],
+    }),
+    sp(140),
+    new Table({
+      width:{size:9026,type:WidthType.DXA}, columnWidths:[4513,4513],
+      rows:[new TableRow({ children:[
+        new TableCell({ borders, width:{size:4513,type:WidthType.DXA}, shading:{fill:LT_GOLD,type:ShadingType.CLEAR}, margins:{top:120,bottom:120,left:200,right:200}, children:[
+          new Paragraph({children:[new TextRun({text:"Public cible",font:"Arial",size:20,bold:true,color:NAVY})]}),
+          new Paragraph({children:[new TextRun({text:audience,font:"Arial",size:22,color:DARK})]})
+        ]}),
+        new TableCell({ borders, width:{size:4513,type:WidthType.DXA}, shading:{fill:LT_BLUE,type:ShadingType.CLEAR}, margins:{top:120,bottom:120,left:200,right:200}, children:[
+          new Paragraph({children:[new TextRun({text:"Durée estimée",font:"Arial",size:20,bold:true,color:NAVY})]}),
+          new Paragraph({children:[new TextRun({text:dur,font:"Arial",size:22,color:DARK})]})
+        ]})
+      ]})]
+    }),
+    sp(200)
+  ];
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FORMATION 1 – GESTION DE DIRECT
+// ═══════════════════════════════════════════════════════════════════
+const F1 = [
+  pgBreak(),
+  ...coverBanner("WEBINAIRE — GESTION DE DIRECT","Production live avec OBS Studio","Réalisateurs · Responsables de retransmission","60 à 75 minutes"),
+  h1("FORMATION 1 — GESTION DE DIRECT"),
+  sp(),
+
+  h2("Objectifs pédagogiques"),
+  p("À l'issue de ce webinaire, chaque participant sera capable de :"),
+  bul("Configurer OBS Studio de A à Z pour une production handball MHBTV"),
+  bul("Utiliser le downstream keyer pour gérer les incrustations graphiques sans toucher aux scènes"),
+  bul("Coordonner 4 sources caméras simultanément avec une logique de réalisation cohérente"),
+  bul("Appliquer les procédures MHBTV de démarrage, diffusion et clôture"),
+  bul("Diagnostiquer et corriger les incidents techniques les plus fréquents en cours de direct"),
+  sp(120),
+
+  h2("Plan général du webinaire"),
+  planTable([
+    ["5 min",  "Accueil, tour de table, présentation des objectifs"],
+    ["12 min", "MODULE A — Architecture OBS : scènes, sources, sorties"],
+    ["15 min", "MODULE B — Le downstream keyer : incrustations graphiques en live"],
+    ["15 min", "MODULE C — Gestion des 4 caméras : plans, transitions, réalisation"],
+    ["12 min", "MODULE D — Procédures MHBTV avant, pendant et après le direct"],
+    ["10 min", "MODULE E — Gestion des incidents techniques"],
+    ["6 min",  "Questions / réponses — évaluation formative — clôture"]
+  ]),
+  sp(200),
+
+  // ─── MODULE A ───
+  moduleHeader("A","Architecture OBS : scènes, sources, sorties","12 minutes","Tous"),
+  sp(120),
+
+  h3("A.1 — Pourquoi comprendre la structure d'OBS avant de diffuser"),
+  p("OBS Studio fonctionne comme une régie TV virtuelle. Avant de toucher au moindre paramètre, il est indispensable d'intégrer sa logique interne : tout flux vidéo est composé de scènes, elles-mêmes peuplées de sources, et le tout est envoyé vers une ou plusieurs sorties. Ignorer cette hiérarchie conduit inévitablement à des erreurs visibles à l'antenne (mauvaise scène active, source non visible, son coupé)."),
+  sp(80),
+
+  h4("Les scènes (Scenes)"),
+  p("Une scène est un ensemble de sources visuelles et audio organisées pour produire un rendu spécifique. Chez MHBTV, chaque scène correspond à une configuration d'écran précise. Exemples de scènes obligatoires pour une production N3 :"),
+  bul("GÉNÉRIQUE DÉBUT — animation d'ouverture de retransmission, logo animé MHBTV"),
+  bul("CAM1 — PLAN LARGE — source caméra 1 en plein écran, DSK actif"),
+  bul("CAM2 — PLAN SERRÉ — source caméra 2 en plein écran, DSK actif"),
+  bul("CAM3 — PLAN TERRAIN — source caméra 3 en plein écran, DSK actif"),
+  bul("CAM4 — RÉGIE / AMBIANCE — source caméra 4, utilisée hors jeu et en interviews"),
+  bul("MULTI-CAM (pip) — plan large principal + insert plan serré en incrustation"),
+  bul("PAUSE / ATTENTE — fond graphique MHBTV, musique d'attente, score figé"),
+  bul("MI-TEMPS — fond dédié avec statistiques, message de pause"),
+  bul("GÉNÉRIQUE FIN — animation de clôture"),
+  sp(60),
+  box("📌","Bonne pratique — Nommage des scènes",[
+    "Toujours préfixer le nom par un numéro d'ordre (01_, 02_…) pour que la liste reste ordonnée dans OBS.",
+    "Exemple : 01_GÉNÉRIQUE DÉBUT · 02_CAM1-LARGE · 03_CAM2-SERRÉ · 08_PAUSE · 09_MI-TEMPS · 10_GÉNÉRIQUE FIN"
+  ], LT_BLUE, NAVY),
+  sp(120),
+
+  h4("Les sources (Sources)"),
+  p("Chaque scène contient une pile de sources. L'ordre dans la pile détermine la superposition visuelle (la source en haut de liste est au premier plan). Types de sources utilisées à MHBTV :"),
+  bul("Capture vidéo (Video Capture Device) : flux d'une caméra connectée via HDMI/USB"),
+  bul("Capture d'écran (Display Capture) : pour afficher un écran d'ordinateur (stats, tableau de score externe)"),
+  bul("Source navigateur (Browser Source) : page web locale ou distante — utilisée pour les incrustations dynamiques du DSK"),
+  bul("Image : visuels statiques (logos, fonds de scène, éléments graphiques fixes)"),
+  bul("Source média (Media Source) : lecture de jingles vidéo, animations, génériques"),
+  bul("Capture audio (Audio Input Capture) : microphones des commentateurs, son ambiance salle"),
+  sp(60),
+  box("⚠️","Point de vigilance — Sources audio",[
+    "Vérifier systématiquement que chaque source audio est bien assignée à la scène correspondante.",
+    "Une source audio globale (non liée à une scène) reste active quelle que soit la scène en cours — risque de double son ou de fuite audio."
+  ], LT_RED, "C62828"),
+  sp(120),
+
+  h4("Les sorties (Outputs)"),
+  p("OBS peut envoyer le flux vers plusieurs destinations simultanément :"),
+  bul("Streaming : envoi vers la plateforme de diffusion (YouTube Live, Twitch…) via un serveur RTMP et une clé de flux. Débit recommandé MHBTV : 4 500 à 6 000 kbps pour une diffusion 1080p30."),
+  bul("Enregistrement local : toujours activer l'enregistrement en parallèle du streaming. Format recommandé : MKV (robuste aux coupures) converti en MP4 après le match."),
+  bul("Monitoring virtuel : retour son sur casque pour le réalisateur sans qu'il soit capté par les micros."),
+  sp(60),
+  box("💡","Astuce — Enregistrement de secours",[
+    "En cas de coupure internet en cours de direct, l'enregistrement local continue sans interruption.",
+    "Dès la reconnexion, reprendre la diffusion. La vidéo locale permet de remonter une rediffusion complète post-match."
+  ], LT_GREEN, "2E7D32"),
+  sp(200),
+
+  // ─── MODULE B ───
+  moduleHeader("B","Le downstream keyer : incrustations graphiques en live","15 minutes","Réalisateurs"),
+  sp(120),
+
+  h3("B.1 — Comprendre le downstream keyer"),
+  p("Le downstream keyer (DSK) est une fonctionnalité d'OBS (via plugin ou version intégrée) qui permet de superposer une couche graphique par-dessus TOUTES les scènes actives, sans avoir à dupliquer les incrustations dans chaque scène individuellement. C'est le mécanisme qui permet d'afficher le score, le logo MHBTV et les bandeaux nominatifs en permanence à l'écran, quelle que soit la caméra active."),
+  sp(60),
+  box("🎯","Pourquoi le DSK est indispensable pour MHBTV",[
+    "Sans DSK : il faudrait ajouter manuellement chaque élément graphique (score, logo, bandeau) dans chacune des 9 scènes de production → risque d'oubli, de désynchronisation, de charge de travail excessive.",
+    "Avec DSK : une seule source gère tous les éléments graphiques, mise à jour en temps réel sur l'ensemble des scènes actives."
+  ], LT_GOLD, GOLD),
+  sp(120),
+
+  h3("B.2 — Installation et configuration du DSK"),
+  h4("Prérequis technique"),
+  p("Le plugin « Downstream Keyer » pour OBS est disponible sur le dépôt GitHub officiel obs-downstream-keyer. Il doit être installé sur le poste de régie avant chaque saison et testé lors des répétitions. Une fois installé, il apparaît dans le menu Outils d'OBS."),
+  sp(60),
+  h4("Étapes de configuration"),
+  num("Ouvrir OBS → menu Outils → Downstream Keyer."),
+  num("Créer une nouvelle entrée DSK et lui donner un nom clair (ex. : « OVERLAY SCORE », « OVERLAY LOGO »)."),
+  num("Sélectionner la source associée : privilégier une Browser Source pointant vers une page HTML locale générée par l'officiel technique."),
+  num("Ajuster l'opacité si nécessaire (0 = invisible, 100 = opaque total). Pour le score : 100 %. Pour le logo : 80 % recommandé."),
+  num("Positionner la source dans la zone de composition (score en bas à gauche, logo en haut à droite selon la charte MHBTV)."),
+  num("Cocher « Afficher sur toutes les scènes » pour activer le DSK globalement."),
+  num("Tester sur chaque scène via le mode Aperçu d'OBS avant la mise en ligne."),
+  sp(80),
+  box("⚠️","Règle absolue du DSK",[
+    "Ne jamais modifier le DSK (taille, position, source) pendant une action de match en cours de diffusion.",
+    "Toute modification est immédiatement visible par les spectateurs. Planifier les ajustements lors des arrêts de jeu, mi-temps ou pauses publicitaires."
+  ], LT_RED, "C62828"),
+  sp(120),
+
+  h3("B.3 — Éléments graphiques gérés via DSK chez MHBTV"),
+  p("Quatre types d'incrustations sont maintenus en permanence ou à la demande :"),
+  sp(60),
+  new Table({
+    width:{size:9026,type:WidthType.DXA}, columnWidths:[2200,2200,4626],
+    rows:[
+      new TableRow({ children:[
+        new TableCell({borders,width:{size:2200,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Élément",font:"Arial",size:20,bold:true,color:WHITE})]})] }),
+        new TableCell({borders,width:{size:2200,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Type de source",font:"Arial",size:20,bold:true,color:WHITE})]})] }),
+        new TableCell({borders,width:{size:4626,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Description",font:"Arial",size:20,bold:true,color:WHITE})]})] })
+      ]}),
+      ...[
+        ["Bandeau score","Browser Source","Affiche score + temps restant, mis à jour automatiquement par l'officiel technique via l'outil MHBTV"],
+        ["Logo MHBTV","Image fixe","Positionnement haut-droit, toujours visible pendant le jeu"],
+        ["Bandeau nominatif","Browser Source","Prénom/Nom + Poste du joueur ou de l'intervenant, affiché 5 secondes sur demande du réalisateur"],
+        ["Chronomètre visuel","Browser Source","Décompte ou comptage synchronisé avec l'officiel temps, optionnel selon les matchs"]
+      ].map(([a,b,c],i) => new TableRow({ children:[
+        new TableCell({borders,width:{size:2200,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:a,font:"Arial",size:21,bold:true,color:NAVY})]})]}),
+        new TableCell({borders,width:{size:2200,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:b,font:"Arial",size:21,color:DARK})]})]}),
+        new TableCell({borders,width:{size:4626,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:c,font:"Arial",size:21,color:DARK})]})]})
+      ]}))
+    ]
+  }),
+  sp(120),
+
+  h3("B.4 — Cas pratique : afficher un bandeau nominatif"),
+  p("Scénario : le réalisateur souhaite afficher le nom d'un joueur entrant en cours de match."),
+  num("L'assistant de régie ouvre l'interface des bandeaux nominatifs (accessible depuis le Drive MHBTV)."),
+  num("Il saisit le prénom, le nom et le numéro du joueur dans les champs prévus."),
+  num("Il appuie sur « Activer » — la Browser Source DSK se met à jour instantanément."),
+  num("Le bandeau reste affiché 5 secondes (timer automatique), puis disparaît."),
+  num("En cas d'erreur de nom : appuyer sur « Masquer » immédiatement, corriger, puis réactiver."),
+  sp(200),
+
+  // ─── MODULE C ───
+  moduleHeader("C","Gestion des 4 caméras : plans, transitions, réalisation","15 minutes","Réalisateurs"),
+  sp(120),
+
+  h3("C.1 — Logique des 4 plans MHBTV"),
+  p("En production complète (N3 et matchs importants), MHBTV déploie 4 caméras avec des rôles complémentaires et une hiérarchie claire. Le réalisateur ne fait jamais un choix esthétique arbitraire : chaque changement de plan répond à une règle de narration visuelle."),
+  sp(80),
+  new Table({
+    width:{size:9026,type:WidthType.DXA}, columnWidths:[1400,1600,2800,3226],
+    rows:[
+      new TableRow({ children:[
+        new TableCell({borders,width:{size:1400,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Caméra",font:"Arial",size:19,bold:true,color:WHITE})]})] }),
+        new TableCell({borders,width:{size:1600,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Plan",font:"Arial",size:19,bold:true,color:WHITE})]})] }),
+        new TableCell({borders,width:{size:2800,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Positionnement conseillé",font:"Arial",size:19,bold:true,color:WHITE})]})] }),
+        new TableCell({borders,width:{size:3226,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Moments d'utilisation",font:"Arial",size:19,bold:true,color:WHITE})]})] })
+      ]}),
+      ...[
+        ["CAM 1","Plan large","Tribune centrale, hauteur maximale, cadrée sur les 2 buts","Plan de référence pendant le jeu continu. Toujours actif en cas de doute."],
+        ["CAM 2","Plan serré","Même tribune que CAM1, zoom × 4 à × 8 sur la zone d'action","Actions rapides, tirs, duels, réactions immédiates après but"],
+        ["CAM 3","Plan terrain","Tribunes latérales ou derrière un but (si autorisé)","Angles tactiques, défense en bloc, entrées/sorties, angles insolites"],
+        ["CAM 4","Régie / Ambiance","Libre, mobile — bord de terrain, couloir vestiaires, banc","Pauses, mi-temps, interviews, réactions entraîneur, plans d'ambiance"]
+      ].map(([a,b,c,d],i) => new TableRow({ children:[
+        new TableCell({borders,width:{size:1400,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:a,font:"Arial",size:21,bold:true,color:NAVY})]})]}),
+        new TableCell({borders,width:{size:1600,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:b,font:"Arial",size:21,color:DARK})]})]}),
+        new TableCell({borders,width:{size:2800,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:c,font:"Arial",size:21,color:DARK})]})]}),
+        new TableCell({borders,width:{size:3226,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:d,font:"Arial",size:21,color:DARK})]})]})
+      ]}))
+    ]
+  }),
+  sp(120),
+
+  h3("C.2 — Règles de transitions et grammaire visuelle"),
+  p("Une retransmission de qualité repose sur des transitions cohérentes et prévisibles. Le réalisateur doit intégrer ces règles comme des réflexes :"),
+  sp(60),
+  h4("Règles de coupe"),
+  bul("Ne jamais couper de plan large à plan large (saut de coupe) : le spectateur perd ses repères spatiaux. Intercaler toujours un plan serré ou un plan terrain entre deux plans larges."),
+  bul("Ne jamais couper sur un mouvement de caméra : attendre que la CAM soit stable avant de basculer."),
+  bul("Eviter les cuts rapides en série pendant plus de 3 secondes : risque de déstabiliser le spectateur sur écran mobile."),
+  sp(60),
+  h4("Moments clés et logique de plan"),
+  bul("But annoncé : rester sur CAM1 (plan large) pour voir l'ensemble de l'action → dès que le but est confirmé, basculer sur CAM2 (plan serré) pour la réaction des joueurs."),
+  bul("Tir de 7 mètres : CAM2 (plan serré) sur le tireur au moment du run-up, retour CAM1 immédiatement après le tir pour voir la réaction globale."),
+  bul("Temps mort : basculer sur CAM4 (régie) pour saisir les échanges banc/joueurs, possibilité de Plan terrain pour les tribunes."),
+  bul("Blessure : revenir immédiatement sur CAM1 (plan large, neutre), ne pas zoomer sur le joueur blessé sauf demande médicale explicite."),
+  bul("Mi-temps : générique MI-TEMPS activé dès le coup de sifflet, suivi de CAM4 en coulisses si possible."),
+  sp(60),
+  h4("Communication régie ↔ caméramen"),
+  p("Le réalisateur doit annoncer ses intentions avant de couper. Protocole vocal MHBTV :"),
+  bul("« Prêt CAM2 » → le caméraman CAM2 confirme « Prêt » → le réalisateur dit « Allez » et bascule."),
+  bul("En cas d'urgence (but imminent) : le réalisateur coupe sans préavis — les caméramen doivent être prêts en permanence."),
+  bul("Canal radio dédié ou intercom câblé fortement recommandé pour les productions N3."),
+  sp(120),
+
+  h3("C.3 — Production avec moins de 4 caméras"),
+  p("En configuration réduite (1, 2 ou 3 caméras), les priorités sont claires :"),
+  bul("1 caméra : uniquement plan large fixe. Aucune transition. Le DSK reste actif. Pas de réalisation dynamique."),
+  bul("2 caméras : CAM1 plan large (référence), CAM2 plan serré (action). Seules les coupures plan large → plan serré sont autorisées."),
+  bul("3 caméras : ajouter CAM3 plan terrain pour les phases défensives et les temps morts."),
+  sp(60),
+  box("📋","Checklist caméraman avant la production",[
+    "✓ Caméra fixée et stabilisée (trépied verrouillé)",
+    "✓ Mise au point et balance des blancs réglées dans les conditions d'éclairage de la salle",
+    "✓ Câble HDMI/USB connecté au boîtier de capture, image visible dans OBS",
+    "✓ Niveau audio (si micro sur caméra) vérifié dans le mixeur OBS",
+    "✓ Communication intercom testée avec la régie"
+  ], LT_GREEN, "2E7D32"),
+  sp(200),
+
+  // ─── MODULE D ───
+  moduleHeader("D","Procédures MHBTV : avant, pendant et après le direct","12 minutes","Tous"),
+  sp(120),
+
+  h3("D.1 — J-1 : préparation technique"),
+  p("La veille de chaque retransmission, le responsable de production doit :"),
+  num("Vérifier la liste des équipements disponibles (caméras, boîtiers de capture, câbles HDMI, trépied, micros, ordinateur régie)."),
+  num("S'assurer que l'OBS est configuré avec le profil de scènes MHBTV saison 2026-2027 (téléchargeable depuis le Drive MHBTV)."),
+  num("Mettre à jour le plugin Downstream Keyer et les Browser Sources si nécessaire."),
+  num("Vérifier les accès plateforme de diffusion (identifiant, clé de flux valide)."),
+  num("Créer la session de match dans l'outil de score MHBTV et confirmer avec l'officiel technique."),
+  sp(120),
+
+  h3("D.2 — J0, arrivée salle : check-list pré-diffusion (J-60 min à J-20 min)"),
+  p("À réaliser obligatoirement dans cet ordre :"),
+  num("Installation physique des caméras aux positions définies (se référer au plan d'installation MHBTV disponible sur le Drive)."),
+  num("Connexion de tous les boîtiers de capture à l'ordinateur de régie — vérification image dans OBS source par source."),
+  num("Test du downstream keyer : bandeau score visible et bien positionné sur 3 scènes au minimum."),
+  num("Confirmation avec l'officiel technique : outil de score ouvert, joueurs des deux équipes chargés, test d'affichage bandeau."),
+  num("Test de streaming : lancer une diffusion privée de 3 minutes pour vérifier le débit, la latence et la stabilité de l'image."),
+  num("Test audio : niveaux commentateurs entre −12 dB et −6 dB, son ambiance salle en fond entre −24 dB et −18 dB."),
+  num("Confirmation avec le Coordinateur général MHBTV (message ou appel) : feu vert pour la mise en ligne publique."),
+  sp(60),
+  box("⏱️","Timing minimal obligatoire",[
+    "La mise en ligne publique (streaming visible par les spectateurs) doit démarrer au moins 10 minutes avant le coup d'envoi.",
+    "Ces 10 minutes sont utilisées pour l'habillage du générique, la présentation des équipes et le test final du DSK."
+  ], LT_GOLD, GOLD),
+  sp(120),
+
+  h3("D.3 — Pendant la retransmission : points de vigilance"),
+  p("Le réalisateur doit surveiller en permanence :"),
+  bul("Le compteur de débit de streaming dans OBS (barre de statut en bas) : doit rester au-dessus de 80 % du débit cible."),
+  bul("Le niveau d'encodage CPU : si l'encodeur dépasse 80 % d'utilisation, risque de chute de qualité ou de coupure."),
+  bul("La cohérence du score affiché par le DSK : faire un double-check visuel à chaque but avec l'officiel technique."),
+  bul("La qualité audio des commentateurs : surveiller le VU-mètre OBS, ne pas laisser saturer (rouge)."),
+  bul("La disponibilité des caméras : un caméraman qui quitte son poste doit prévenir la régie avant."),
+  sp(120),
+
+  h3("D.4 — Fin de retransmission : clôture"),
+  num("Lancer le générique de fin dès le coup de sifflet final."),
+  num("Laisser la diffusion active 5 minutes supplémentaires pour les interviews d'après-match si prévues."),
+  num("Arrêter le streaming via OBS — confirmer l'arrêt sur la plateforme de diffusion."),
+  num("Vérifier que l'enregistrement local est bien sauvegardé (format MKV → convertir en MP4 sous 24h)."),
+  num("Remplir la fiche de compte-rendu de production MHBTV (incidents, durée, qualité) disponible sur le Drive."),
+  num("Transmettre le fichier vidéo au responsable éditorial pour publication différée éventuelle."),
+  sp(200),
+
+  // ─── MODULE E ───
+  moduleHeader("E","Gestion des incidents techniques en live","10 minutes","Tous"),
+  sp(120),
+
+  h3("E.1 — Procédures d'urgence par type d'incident"),
+  p("Tout incident doit être traité selon le principe : masquer l'erreur à l'antenne en priorité, diagnostiquer ensuite. Ne jamais laisser une image de mauvaise qualité ou un écran noir sans action."),
+  sp(80),
+  h4("Perte d'une source caméra"),
+  bul("Action immédiate : basculer sur la scène PAUSE ou sur une autre caméra fonctionnelle."),
+  bul("Diagnostic : vérifier le câble HDMI/USB, redémarrer le boîtier de capture, relancer la source dans OBS (clic droit → Propriétés → OK)."),
+  bul("Si non récupérable : continuer la production avec les caméras restantes, signaler l'incident au responsable de production."),
+  sp(60),
+  h4("Freeze ou blocage de l'encodeur OBS"),
+  bul("Signe visible : image figée à l'antenne, compteur de frames bloqué dans OBS."),
+  bul("Action : appuyer sur « Stop Streaming » → attendre 5 secondes → « Start Streaming ». OBS repart sans fermer l'application."),
+  bul("Si OBS freeze complètement : forcer la fermeture via le gestionnaire de tâches. Relancer OBS → charger le profil sauvegardé → relancer le streaming. Durée d'interruption typique : 30 à 90 secondes."),
+  bul("Communication : l'assistant de régie publie immédiatement un message sur le chat de diffusion pour informer les spectateurs."),
+  sp(60),
+  h4("Coupure audio complète"),
+  bul("Vérifier que la source audio principale (micros commentateurs) n'est pas en mute dans le mixeur OBS."),
+  bul("Vérifier le câble jack/XLR entre le micro et l'interface audio."),
+  bul("Basculer sur la source audio de secours si disponible (micro USB direct)."),
+  bul("Si aucune solution immédiate : activer le son ambiance salle en solo comme solution temporaire — ne pas diffuser en silence."),
+  sp(60),
+  h4("Coupure internet"),
+  bul("L'enregistrement local continue automatiquement."),
+  bul("Tenter un repartage de connexion via smartphone (4G/5G) sur l'ordinateur de régie."),
+  bul("Relancer le streaming dès que la connexion est rétablie."),
+  bul("Publier un message d'excuse sur les réseaux sociaux MHBTV avec heure de retour estimée."),
+  sp(60),
+  box("📋","Tableau de bord incidents — à afficher en régie",[
+    "Perte caméra → Scène PAUSE → Diagnostic câble → Autre caméra",
+    "Freeze OBS → Stop/Start Streaming → Si KO : relance OBS profil sauvegardé",
+    "Coupure audio → Mute vérif → Câble vérif → Source secours → Ambiance salle",
+    "Coupure internet → Enreg. local actif → 4G/5G → Relance dès rétablissement"
+  ], LT_RED, "C62828"),
+  sp(200),
+
+  h2("Évaluation formative"),
+  p("Quiz de 8 questions (QCM + vrai/faux) envoyé par le formateur via le chat. Thèmes : architecture OBS, DSK, gestion des plans, procédures. Score minimum de validation : 6/8."),
+  p("Les participants n'ayant pas atteint 6/8 reçoivent un accès à la vidéo replay du webinaire et sont invités à repasser l'évaluation lors de la prochaine session."),
+  sp(200),
+
+  h2("Supports de formation"),
+  bul("Fichier de configuration OBS MHBTV 2026-2027 (profil exportable, disponible sur le Drive)"),
+  bul("Check-list pré-diffusion version imprimable A5 (à plastifier et garder en régie)"),
+  bul("Tableau de bord incidents version imprimable A5"),
+  bul("Tutoriel vidéo interne : « Configurer le downstream keyer — MHBTV 2026-2027 » (15 min)"),
+  bul("Accès au replay du webinaire (Drive MHBTV, section Formations)"),
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// FORMATION 2 – COMMENTAIRES SPORTIFS
+// ═══════════════════════════════════════════════════════════════════
+const F2 = [
+  pgBreak(),
+  ...coverBanner("WEBINAIRE — COMMENTAIRES SPORTIFS","Techniques de commentaire handball en direct","Commentateurs MHBTV","55 à 70 minutes"),
+  h1("FORMATION 2 — COMMENTAIRES SPORTIFS"),
+  sp(),
+
+  h2("Objectifs pédagogiques"),
+  bul("Adopter une posture professionnelle de commentateur sportif en diffusion en ligne"),
+  bul("Maîtriser les techniques vocales (diction, rythme, intonation, gestion de l'énergie)"),
+  bul("Structurer un commentaire cohérent sur 90 minutes de production"),
+  bul("Gérer les moments clés du match (but, exclusion, 7 mètres, fin de match tendu)"),
+  bul("Travailler efficacement en binôme commentateur / consultant"),
+  bul("Préparer une fiche match complète et l'utiliser en direct"),
+  sp(120),
+
+  h2("Plan général du webinaire"),
+  planTable([
+    ["5 min",  "Accueil — écoute d'un extrait de commentaire MHBTV — identification des points d'amélioration"],
+    ["12 min", "MODULE A — La voix du commentateur : technique et outils"],
+    ["12 min", "MODULE B — Structurer un commentaire de match complet"],
+    ["12 min", "MODULE C — Gestion des moments clés"],
+    ["8 min",  "MODULE D — Travailler en binôme : rôles et méthode"],
+    ["8 min",  "MODULE E — Préparer sa fiche match et son vocabulaire"],
+    ["8 min",  "Exercice pratique live — retour collectif — évaluation"]
+  ]),
+  sp(200),
+
+  // ─── MODULE A ───
+  moduleHeader("A","La voix du commentateur : technique et outils","12 minutes","Commentateurs"),
+  sp(120),
+
+  h3("A.1 — La voix comme premier outil"),
+  p("En diffusion en ligne, le spectateur navigue entre plusieurs fenêtres, regarde sur smartphone, ou écoute parfois sans regarder l'écran. La voix du commentateur est souvent le seul lien émotionnel entre l'action et le spectateur. Un commentaire bien posé maintient l'attention ; un commentaire monotone ou mal articulé pousse à couper le son."),
+  sp(80),
+
+  h4("Diction et articulation"),
+  p("La diction désigne la clarté de la prononciation de chaque phonème. Elle est cruciale pour les noms de joueurs, les termes techniques et les chiffres."),
+  bul("Exercice de préchauffage recommandé avant chaque prise d'antenne : répéter 3 fois à voix haute les noms de tous les joueurs des deux équipes en articulant chaque syllabe."),
+  bul("Les liaisons en français peuvent masquer un nom propre. Exemple : « Et c'est Allard / qui tire » — marquer une légère pause avant le nom propre."),
+  bul("Ne jamais manger ses fins de phrase : « défense en zéro-zéro » ne doit pas sonner comme « défense en z'z' »."),
+  sp(60),
+
+  h4("Rythme et tempo"),
+  p("Le rythme du commentaire doit refléter la vitesse du jeu. C'est un des indicateurs les plus puissants de la qualité d'un commentateur :"),
+  bul("Jeu lent (construction offensive, remise en jeu) : parler posément, voix grave, phrases longues avec une analyse tactique."),
+  bul("Jeu rapide (contre-attaque, montée de balle express) : phrases courtes, débit accéléré, verbes d'action au présent."),
+  bul("Tir au but : silence d'une fraction de seconde avant l'impact — ce blanc crée la tension. Puis explosion ou soupir selon le résultat."),
+  sp(60),
+
+  h4("Intonation et modulation"),
+  p("L'intonation est la variation de hauteur de la voix. Un commentaire sur une seule fréquence est profondément ennuyeux."),
+  bul("Monter en intonation en fin de question rhétorique : « Est-ce que Meylan va tenir cette avance ? »"),
+  bul("Descendre l'intonation pour une information factuelle neutre : « Score actuel : 18 à 15. »"),
+  bul("Varier entre grave et aigu sur un même commentaire de séquence d'action (10 secondes) pour maintenir l'écoute."),
+  sp(60),
+
+  h4("Niveaux d'énergie et dosage"),
+  p("Le piège le plus fréquent chez les commentateurs débutants est l'épuisement émotionnel en première mi-temps : ils commentent tout au niveau 10/10 et n'ont plus rien à donner en fin de match."),
+  bul("Construire une courbe d'énergie sur le match : 6/10 au début, crescendo jusqu'au pic (fin de match serré = 10/10)."),
+  bul("Calibrer selon l'enjeu : un but à la 5e minute en match amical ne mérite pas le même niveau d'énergie qu'un but à la 59e en finale."),
+  bul("Se ménager lors des phases de jeu statiques pour être à pleine énergie sur les moments décisifs."),
+  sp(80),
+  box("💡","Astuce pratique",[
+    "S'hydrater toutes les 10 minutes (eau à température ambiante, éviter les boissons sucrées ou gazeuses).",
+    "Éviter le café dans l'heure précédant la prise d'antenne : la caféine peut provoquer un débit trop rapide et une voix tendue.",
+    "En cas de voix qui se casse : boire une gorgée d'eau, faire une inspiration lente par le nez — ne pas tousser dans le micro."
+  ], LT_BLUE, NAVY),
+  sp(200),
+
+  // ─── MODULE B ───
+  moduleHeader("B","Structurer un commentaire de match complet","12 minutes","Commentateurs"),
+  sp(120),
+
+  h3("B.1 — Avant-match : poser le cadre"),
+  p("Les 5 à 10 premières minutes de diffusion (avant le coup d'envoi) sont le moment où le commentateur installe la crédibilité de la retransmission. Le spectateur doit avoir envie de rester jusqu'au bout."),
+  sp(60),
+  h4("Contenu obligatoire"),
+  bul("Accueil du spectateur : salutation chaleureuse, mention de la compétition, du tour, de l'enjeu (classement, matchs précédents)."),
+  bul("Présentation des équipes : composition, joueurs à surveiller, absents importants."),
+  bul("Contexte de la rencontre : historique des confrontations directes, forme récente des deux équipes."),
+  bul("Présentation du partenaire de commentaire si binôme."),
+  sp(60),
+  box("📝","Exemple d'ouverture",[
+    "« Bonsoir à toutes et à tous, bienvenue sur Meylan Handball TV pour ce match de Nationale 3 entre Meylan et [adversaire].",
+    "Ce soir, les deux équipes se retrouvent à égalité au classement, à trois journées de la fin de la phase régulière.",
+    "Avec moi ce soir, [prénom du consultant], ancien international junior, qui nous apportera son expertise tactique tout au long de la soirée. »"
+  ], LT_GOLD, GOLD),
+  sp(120),
+
+  h3("B.2 — Pendant le jeu : décrire, analyser, raconter"),
+  p("Le commentaire en cours de jeu repose sur trois niveaux d'intervention qui doivent s'alterner naturellement :"),
+  sp(60),
+  bul("Niveau 1 — Description pure : nommer les joueurs en possession, la zone de jeu, le geste technique. Indispensable — le spectateur doit savoir ce qui se passe même sans regarder l'écran."),
+  bul2("Exemple : « Durand récupère le ballon en transition, il part seul côté gauche, il centre pour Martin… »"),
+  bul("Niveau 2 — Analyse courte : expliquer le pourquoi d'une action. 1 à 2 phrases maximum pour ne pas décrocher du jeu."),
+  bul2("Exemple : « C'est le schéma préféré de Meylan : la montée rapide avant que la défense adverse soit en place. »"),
+  bul("Niveau 3 — Narration et émotion : contextualiser dans l'histoire du match. Utile sur les temps morts et arrêts de jeu."),
+  bul2("Exemple : « C'est le cinquième but consécutif de Meylan — complètement renversant par rapport à la situation à la 20e minute. »"),
+  sp(60),
+  box("⚠️","Erreurs fréquentes à éviter",[
+    "Commenter le jeu sans nommer les joueurs (« il tire, il marque ») — le spectateur ne sait pas de qui on parle.",
+    "Utiliser des tics de langage répétitifs (« voilà », « effectivement », « donc ») — enregistrer ses commentaires et les réécouter.",
+    "Parler sans discontinuer : les silences sont des respirations narratives — ils ont de la valeur.",
+    "Donner un avis tranché sur une décision arbitrale contestée — rester factuel et neutre."
+  ], LT_RED, "C62828"),
+  sp(120),
+
+  h3("B.3 — Mi-temps : bilan et relance"),
+  p("La mi-temps dure 15 minutes. Le commentateur dispose de 5 à 8 minutes de temps d'antenne (générique, puis interview éventuelle). Contenu recommandé :"),
+  bul("Bilan chiffré de la première mi-temps : score, tirs tentés, fautes, exclusions, pourcentage d'efficacité en attaque."),
+  bul("Fait saillant : la séquence la plus importante de la première mi-temps en 3 phrases."),
+  bul("Prévision tactique pour la seconde mi-temps : qu'est-ce qui doit changer pour chaque équipe ?"),
+  bul("Si interview disponible : laisser le micro à l'entraîneur ou à un joueur (2 à 3 minutes max, relancer avec une question ouverte)."),
+  sp(120),
+
+  h3("B.4 — Fin de match : conclure avec impact"),
+  p("La conclusion d'un commentaire est aussi importante que son ouverture. Les dernières phrases restent en mémoire."),
+  bul("Score final, buteurs, statistiques clés en 4 à 5 phrases."),
+  bul("Contextualisation dans la saison : impact sur le classement, prochaine échéance."),
+  bul("Remerciements aux spectateurs et à l'équipe de production MHBTV."),
+  bul("Si match nul ou défaite : rester factuel, sobre, ne pas sur-analyser dans l'instant — éviter de paraître accablé ou au contraire artificiel."),
+  sp(200),
+
+  // ─── MODULE C ───
+  moduleHeader("C","Gestion des moments clés","12 minutes","Commentateurs"),
+  sp(120),
+
+  h3("C.1 — Le but : le moment le plus complexe"),
+  p("Le but est le moment le plus attendu par le spectateur et le plus difficile à commenter. Il doit respecter une séquence précise :"),
+  num("Anticiper : « Durand en position de tir… » — créer la tension avant l'action."),
+  num("L'action : « Il tire… BUUUT DE MEYLAN ! » — le cri doit être naturel, sincère, pas forcé."),
+  num("L'identification : immédiatement après la célébration, nommer le buteur et l'éventuel passeur."),
+  num("Le score : « Score actuel : 14 à 11 pour Meylan. »"),
+  num("La contextualisation : « C'est le sixième but de Dupont ce soir, le meilleur scoreur de la rencontre. »"),
+  sp(60),
+  box("⚠️","Erreur classique",[
+    "Crier « BUT ! » avant que le ballon ait franchi la ligne — attendre la décision de l'arbitre en cas de doute.",
+    "En cas de but refusé après célébration : annoncer calmement la correction — ne pas effacer l'enthousiasme précédent, mais donner l'information clairement."
+  ], LT_RED, "C62828"),
+  sp(120),
+
+  h3("C.2 — L'exclusion temporaire"),
+  p("Une exclusion change l'équilibre du match. Le commentateur doit en expliquer les conséquences immédiatement :"),
+  bul("Annoncer le joueur exclu et son équipe : « Exclusion temporaire de numéro 7, Lefebvre, pour Meylan. »"),
+  bul("Préciser la durée (2 minutes) et les conséquences : « Meylan va devoir jouer en infériorité numérique sur les deux prochaines minutes — situation délicate à 15-14. »"),
+  bul("Suivre le retour du joueur à la fin des 2 minutes et le signaler : « Lefebvre reprend sa place sur le terrain. »"),
+  bul("En cas de cumul (deuxième exclusion = disqualification) : annoncer la disqualification et ses conséquences sur le reste du match."),
+  sp(120),
+
+  h3("C.3 — Le jet de 7 mètres"),
+  p("Le 7 mètres est le moment de plus forte tension individuelle dans un match de handball. L'art du commentateur est de construire cette tension sans la rompre prématurément."),
+  num("Annonce : « L'arbitre siffle jet de 7 mètres pour Meylan. [Joueur X] va se présenter face au gardien adverse. »"),
+  num("Montée en tension (silence partiel ou voix très basse) : « Silence dans la salle… »"),
+  num("Le tir : pas de commentaire pendant l'action — laisser le son de la salle s'exprimer."),
+  num("Résultat : cri ou commentaire sobre selon le résultat, en identifiant immédiatement buteur ou gardien."),
+  sp(120),
+
+  h3("C.4 — Arrêt de jeu et temps mort"),
+  p("Ces pauses sont des opportunités narratives précieuses. Le commentateur ne doit pas les laisser passer en silence."),
+  bul("Statistiques préparées à l'avance : sortir une donnée intéressante du match en cours (tirs/arrêts, ratio exclusions, efficacité en supériorité numérique)."),
+  bul("Anecdote ou contexte : un fait historique sur les deux équipes, ou un rappel du classement."),
+  bul("Échange avec le consultant (si binôme) : demander une analyse tactique du temps mort en cours."),
+  sp(120),
+
+  h3("C.5 — Fin de match tendue"),
+  p("Les 5 dernières minutes d'un match serré nécessitent un traitement spécifique :"),
+  bul("Mentionner régulièrement le score ET le temps restant (toutes les 60 à 90 secondes)."),
+  bul("Monter progressivement l'énergie vocale à mesure que le temps s'écoule."),
+  bul("Ne pas anticiper le résultat : éviter « Meylan va gagner ce match » tant que le coup de sifflet final n'a pas retenti."),
+  bul("Coup de sifflet final : laisser un blanc de 2 à 3 secondes pour laisser vivre l'émotion de la salle avant de reprendre le micro."),
+  sp(200),
+
+  // ─── MODULE D ───
+  moduleHeader("D","Travailler en binôme : rôles et méthode","8 minutes","Commentateurs"),
+  sp(120),
+
+  h3("D.1 — Répartition des rôles"),
+  p("Le binôme commentateur principal / consultant est le format de référence des retransmissions MHBTV. Chaque rôle a des attributions distinctes :"),
+  sp(60),
+  twoCol(
+    [
+      new Paragraph({children:[new TextRun({text:"COMMENTATEUR PRINCIPAL",font:"Arial",size:21,bold:true,color:NAVY})],spacing:{before:0,after:80}}),
+      new Paragraph({children:[new TextRun({text:"• Décrit l'action en temps réel",font:"Arial",size:21,color:DARK})],spacing:{before:40,after:40}}),
+      new Paragraph({children:[new TextRun({text:"• Gère le fil narratif du direct",font:"Arial",size:21,color:DARK})],spacing:{before:40,after:40}}),
+      new Paragraph({children:[new TextRun({text:"• Donne la parole au consultant",font:"Arial",size:21,color:DARK})],spacing:{before:40,after:40}}),
+      new Paragraph({children:[new TextRun({text:"• Annonce les buts, fautes, scores",font:"Arial",size:21,color:DARK})],spacing:{before:40,after:40}}),
+      new Paragraph({children:[new TextRun({text:"• Reprend le micro après toute analyse",font:"Arial",size:21,color:DARK})],spacing:{before:40,after:0}})
+    ],
+    [
+      new Paragraph({children:[new TextRun({text:"CONSULTANT / ANALYSTE",font:"Arial",size:21,bold:true,color:NAVY})],spacing:{before:0,after:80}}),
+      new Paragraph({children:[new TextRun({text:"• Éclaire les aspects tactiques",font:"Arial",size:21,color:DARK})],spacing:{before:40,after:40}}),
+      new Paragraph({children:[new TextRun({text:"• Intervient sur invitation ou arrêts de jeu",font:"Arial",size:21,color:DARK})],spacing:{before:40,after:40}}),
+      new Paragraph({children:[new TextRun({text:"• Ne coupe jamais sur les actions rapides",font:"Arial",size:21,color:DARK})],spacing:{before:40,after:40}}),
+      new Paragraph({children:[new TextRun({text:"• Dose ses interventions (qualité > quantité)",font:"Arial",size:21,color:DARK})],spacing:{before:40,after:40}}),
+      new Paragraph({children:[new TextRun({text:"• Reste factuel sur les décisions d'arbitrage",font:"Arial",size:21,color:DARK})],spacing:{before:40,after:0}})
+    ],
+    LT_BLUE, LT_GOLD
+  ),
+  sp(120),
+
+  h3("D.2 — Règles d'or du binôme"),
+  num("Ne jamais parler en même temps. Mettre en place un signal visuel ou audio d'interruption (ex. : lever la main, clignotant LED sur la table)."),
+  num("Synchroniser les silences sur les moments intenses : les deux commentateurs se taisent simultanément sur un tir au but final."),
+  num("Préparer ensemble la fiche match la veille : partager les informations pour éviter les contradictions ou les redites."),
+  num("Se faire des retours constructifs en fin de retransmission, pas pendant : ne pas corriger son partenaire en direct sauf erreur factuelle grave (mauvais score, mauvais nom)."),
+  num("Maintenir une tonalité cohérente : si le commentateur principal est enthousiaste, le consultant ne peut pas être terne."),
+  sp(200),
+
+  // ─── MODULE E ───
+  moduleHeader("E","Préparer sa fiche match et son vocabulaire","8 minutes","Commentateurs"),
+  sp(120),
+
+  h3("E.1 — La fiche match"),
+  p("La fiche match est l'outil de travail central du commentateur. Elle doit être finalisée la veille et accessible pendant tout le direct (version papier ET version numérique)."),
+  sp(60),
+  h4("Contenu obligatoire de la fiche match"),
+  bul("En-tête : compétition, journée, date, lieu, heure de coup d'envoi"),
+  bul("Équipe domicile : liste complète des joueurs (numéro, prénom, nom, poste), entraîneur, gardiens"),
+  bul("Équipe visiteur : idem"),
+  bul("Classement actuel des deux équipes au moment du match"),
+  bul("Historique des confrontations directes (3 derniers matchs minimum)"),
+  bul("Statistiques récentes : meilleur buteur, gardien le plus performant, forme sur les 5 derniers matchs"),
+  bul("Informations contextuelles : absents (blessés, suspendus), enjeu du match, ambiance attendue"),
+  sp(60),
+  box("💡","Où trouver les informations",[
+    "Site officiel FFHB et page de la compétition : compositions, classements, statistiques officielles",
+    "Réseaux sociaux des clubs : annonces d'absents, échauffements, compositions de dernière minute",
+    "Contact direct avec le responsable communication du club adverse (pour les matchs N3)"
+  ], LT_BLUE, NAVY),
+  sp(120),
+
+  h3("E.2 — Vocabulaire technique handball à maîtriser"),
+  p("Un commentateur crédible maîtrise le vocabulaire technique du handball. Liste de base à connaître parfaitement :"),
+  sp(60),
+  new Table({
+    width:{size:9026,type:WidthType.DXA}, columnWidths:[2800,6226],
+    rows:[
+      new TableRow({ children:[
+        new TableCell({borders,width:{size:2800,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Terme",font:"Arial",size:20,bold:true,color:WHITE})]})] }),
+        new TableCell({borders,width:{size:6226,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Définition / usage en commentaire",font:"Arial",size:20,bold:true,color:WHITE})]})] })
+      ]}),
+      ...[
+        ["Attaque placée","Phase offensive organisée, joueurs placés face à la défense — opposé à la contre-attaque"],
+        ["Montée de balle","Transition rapide du gardien aux attaquants avant que la défense soit en place"],
+        ["Défense 6-0","6 défenseurs sur la ligne des 6 mètres — très compacte, peu de risque"],
+        ["Défense 5-1","Un défenseur avancé harcèle le meneur de jeu adverse — plus agressive"],
+        ["Défense 3-2-1","Défense très offensive avec 3 niveaux — risquée mais déstabilisante"],
+        ["Jeu de pivot","Actions créées autour de l'ailier central (pivot) posté dans la défense adverse"],
+        ["Rotation défensive","Déplacement coordonné des défenseurs pour couvrir les décalages"],
+        ["Jet franc","Faute simple → remise en jeu à l'endroit de la faute — aucun tir direct"],
+        ["Jet de 7 mètres","Faute grave sur action de but → tir direct face au gardien (équivalent penalty)"],
+        ["Exclusion temporaire","2 minutes hors du terrain pour une faute grave — l'équipe joue en infériorité"],
+        ["Disqualification","Exclusion définitive du match (cumul d'exclusions ou faute grave)"],
+        ["Supériorité numérique","Équipe en avantage suite à une exclusion adverse — doit en profiter"],
+        ["Gardien sorti","Remplacement temporaire du gardien par un 7e joueur de champ en attaque"]
+      ].map(([a,b],i) => new TableRow({ children:[
+        new TableCell({borders,width:{size:2800,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:a,font:"Arial",size:21,bold:true,color:NAVY})]})]}),
+        new TableCell({borders,width:{size:6226,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:b,font:"Arial",size:21,color:DARK})]})]}),
+      ]}))
+    ]
+  }),
+  sp(200),
+
+  h2("Exercice pratique"),
+  p("Chaque participant commente en direct un extrait vidéo d'une action de match (3 minutes) diffusé pendant le webinaire. Critères d'évaluation :"),
+  bul("Identification correcte des joueurs et du jeu en cours"),
+  bul("Variation de rythme et d'intonation sur l'extrait"),
+  bul("Gestion d'au moins un moment clé (but ou exclusion)"),
+  p("Retour collectif du formateur sur la diction, le rythme, la précision et la gestion émotionnelle."),
+  sp(200),
+
+  h2("Supports de formation"),
+  bul("Modèle de fiche match vierge MHBTV 2026-2027 (Drive MHBTV, section Formations)"),
+  bul("Lexique complet du handball (PDF, 2 pages, version imprimable)"),
+  bul("Enregistrements commentés annotés — archives MHBTV (accès Drive)"),
+  bul("Guide de posture vocale — synthèse 1 page"),
+  bul("Accès au replay du webinaire (Drive MHBTV, section Formations)"),
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// FORMATION 3 – SCORE ET TEMPS
+// ═══════════════════════════════════════════════════════════════════
+const F3 = [
+  pgBreak(),
+  ...coverBanner("WEBINAIRE — SCORE ET TEMPS","Gestion officielle du tableau de bord en direct","Officiels techniques : score et statistiques","50 à 60 minutes"),
+  h1("FORMATION 3 — SCORE ET TEMPS"),
+  sp(),
+
+  h2("Objectifs pédagogiques"),
+  bul("Opérer l'outil de score MHBTV en conditions de direct N3 et matches de championnat"),
+  bul("Synchroniser les données en temps réel avec la régie OBS via le downstream keyer"),
+  bul("Saisir les événements de match avec précision et dans les délais imposés"),
+  bul("Gérer les situations exceptionnelles : correction d'erreur, contestation de but, déconnexion"),
+  bul("Produire les rapports statistiques de mi-temps et de fin de match"),
+  sp(120),
+
+  h2("Plan général du webinaire"),
+  planTable([
+    ["5 min",  "Accueil — rappel du rôle des officiels techniques dans la chaîne MHBTV"],
+    ["10 min", "MODULE A — Rôles et responsabilités : officiel score vs officiel statistiques"],
+    ["12 min", "MODULE B — Interface de l'outil de score MHBTV : prise en main complète"],
+    ["12 min", "MODULE C — Saisie des événements : procédures détaillées"],
+    ["10 min", "MODULE D — Synchronisation avec la régie OBS et protocole N3"],
+    ["8 min",  "MODULE E — Correction d'erreurs et situations exceptionnelles"],
+    ["8 min",  "Simulation live — évaluation formative — clôture"]
+  ]),
+  sp(200),
+
+  // ─── MODULE A ───
+  moduleHeader("A","Rôles et responsabilités","10 minutes","Tous les officiels techniques"),
+  sp(120),
+
+  h3("A.1 — Place des officiels techniques dans la production MHBTV"),
+  p("Dans la chaîne de production MHBTV, les officiels techniques occupent une position pivot : ils sont à l'interface entre l'action réelle sur le terrain et l'information numérique affichée à l'écran des spectateurs. Une erreur de leur part est immédiatement visible par des milliers de personnes."),
+  sp(60),
+  box("🎯","Principe de base",[
+    "L'exactitude prime sur la rapidité. Afficher le bon score 3 secondes après le but vaut infiniment mieux qu'afficher un score erroné immédiatement.",
+    "En cas de doute sur un événement (qui a marqué ? y avait-il faute ?), attendre la confirmation de l'arbitre de table avant de saisir."
+  ], LT_GOLD, GOLD),
+  sp(120),
+
+  h3("A.2 — Officiel score : responsabilités détaillées"),
+  bul("Saisie en temps réel des buts : équipe concernée, numéro du buteur, type d'action si disponible (tir de loin, pivot, contre-attaque, 7 mètres)."),
+  bul("Gestion du chronomètre : démarrage au coup d'envoi, pause sur chaque arrêt de jeu (faute grave, temps mort, blessure), reprise sur coup de sifflet de reprise."),
+  bul("Enregistrement des exclusions : numéro du joueur, équipe, heure d'exclusion, calcul de la fin de l'exclusion."),
+  bul("Enregistrement des temps morts d'équipe : équipe demandante, heure, décompte des temps morts restants (chaque équipe dispose de 3 temps morts par match)."),
+  bul("Signal au réalisateur OBS à chaque modification importante du score via le canal de communication défini."),
+  sp(120),
+
+  h3("A.3 — Officiel statistiques : responsabilités détaillées"),
+  bul("Comptage des tirs tentés par équipe, répartition par zone (aile gauche, aile droite, pivot, arrière, 7 mètres)."),
+  bul("Statistiques individuelles : tirs/buts de chaque joueur, arrêts du gardien."),
+  bul("Efficacité en supériorité et infériorité numérique : buts marqués/encaissés pendant les exclusions adverses."),
+  bul("Production du rapport de mi-temps (PDF ou CSV) à transmettre aux commentateurs avant la reprise."),
+  bul("Production du rapport de fin de match à transmettre au Coordinateur général MHBTV sous 10 minutes après le coup de sifflet final."),
+  sp(80),
+  box("📋","Communication inter-postes obligatoire",[
+    "Officiel score ↔ Officiel statistiques : se synchroniser après chaque but pour confirmer que les données sont cohérentes.",
+    "Officiel score ↔ Régie OBS : confirmer le score affiché à l'écran toutes les 10 minutes et après chaque but.",
+    "Officiel score ↔ Arbitre de table : alignement sur le chronomètre officiel toutes les 5 minutes."
+  ], LT_BLUE, NAVY),
+  sp(200),
+
+  // ─── MODULE B ───
+  moduleHeader("B","Interface de l'outil de score MHBTV : prise en main complète","12 minutes","Tous"),
+  sp(120),
+
+  h3("B.1 — Connexion et configuration de la session"),
+  p("Avant chaque match, l'officiel score doit configurer la session dans l'outil MHBTV. Cette étape doit être réalisée au moins 30 minutes avant le coup d'envoi."),
+  sp(60),
+  num("Se connecter à l'outil via le navigateur (URL fournie par le Coordinateur général MHBTV) avec les identifiants de la saison 2026-2027."),
+  num("Ouvrir la session du match du jour (créée en amont par le Coordinateur général ou le responsable éditorial)."),
+  num("Vérifier la liste des joueurs des deux équipes : noms, prénoms, numéros de maillot. Signaler immédiatement toute erreur au Coordinateur."),
+  num("Sélectionner l'équipe domicile et l'équipe visiteur dans les menus déroulants — vérifier que les couleurs de maillots correspondent à la charte graphique MHBTV."),
+  num("Régler le chronomètre sur 0:00 (mode comptage) ou 30:00 (mode décompte) selon la configuration choisie pour le match."),
+  num("Tester l'affichage du bandeau score sur le retour régie : demander confirmation au réalisateur que le DSK est actif et que le score s'affiche correctement à l'écran."),
+  sp(80),
+  box("⚠️","Point critique — Ordre des équipes",[
+    "L'équipe domicile doit toujours être positionnée à gauche de l'affichage, l'équipe visiteur à droite.",
+    "Cette convention est universelle dans le handball — une inversion crée une confusion immédiate pour les spectateurs."
+  ], LT_RED, "C62828"),
+  sp(120),
+
+  h3("B.2 — Zones de l'interface"),
+  p("L'interface de l'outil MHBTV est structurée en 5 zones principales :"),
+  sp(60),
+  bul("Zone Score (centre) : affichage du score en cours avec boutons + et − pour chaque équipe. Chaque pression sur + ouvre une fenêtre de confirmation demandant le numéro du buteur."),
+  bul("Zone Chronomètre : start/pause/stop, affichage du temps en cours, correction manuelle (accès restreint aux officiels niveau 2 et Coordinateur général)."),
+  bul("Zone Événements (panneau latéral) : liste chronologique de tous les événements enregistrés avec horodatage (but, exclusion, carton rouge, temps mort). Permet la suppression et la correction d'un événement."),
+  bul("Zone Statistiques (onglet dédié) : saisie des tirs, des arrêts et des données individuelles par l'officiel statistiques. Mise à jour en temps réel visible dans les rapports."),
+  bul("Zone Export : génération des rapports de mi-temps et de fin de match en PDF et CSV, envoi automatique aux commentateurs si l'option est activée."),
+  sp(120),
+
+  h3("B.3 — Raccourcis clavier à mémoriser"),
+  p("En conditions de direct, la vitesse de saisie est cruciale. Les raccourcis clavier permettent de gagner de précieuses secondes :"),
+  new Table({
+    width:{size:9026,type:WidthType.DXA}, columnWidths:[2200,6826],
+    rows:[
+      new TableRow({ children:[
+        new TableCell({borders,width:{size:2200,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Raccourci",font:"Arial",size:20,bold:true,color:WHITE})]})] }),
+        new TableCell({borders,width:{size:6826,type:WidthType.DXA},shading:{fill:NAVY,type:ShadingType.CLEAR},margins:{top:100,bottom:100,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:"Action",font:"Arial",size:20,bold:true,color:WHITE})]})] })
+      ]}),
+      ...[
+        ["Ctrl + 1", "But équipe domicile (ouvre fenêtre de confirmation)"],
+        ["Ctrl + 2", "But équipe visiteur (ouvre fenêtre de confirmation)"],
+        ["Espace", "Start / Pause du chronomètre"],
+        ["Ctrl + E", "Nouvelle exclusion (ouvre formulaire)"],
+        ["Ctrl + T", "Temps mort (ouvre formulaire de sélection d'équipe)"],
+        ["Ctrl + Z", "Annuler la dernière action (avant confirmation)"],
+        ["F5", "Rafraîchir l'affichage du bandeau score dans OBS"]
+      ].map(([a,b],i) => new TableRow({ children:[
+        new TableCell({borders,width:{size:2200,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:a,font:"Arial",size:22,bold:true,color:NAVY,font:"Courier New"})]})]}),
+        new TableCell({borders,width:{size:6826,type:WidthType.DXA},shading:{fill:i%2===0?LT_BLUE:WHITE,type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:120,right:120},children:[new Paragraph({children:[new TextRun({text:b,font:"Arial",size:21,color:DARK})]})]}),
+      ]}))
+    ]
+  }),
+  sp(200),
+
+  // ─── MODULE C ───
+  moduleHeader("C","Saisie des événements : procédures détaillées","12 minutes","Officiel score"),
+  sp(120),
+
+  h3("C.1 — Procédure de saisie d'un but"),
+  p("La saisie d'un but est l'action la plus fréquente et la plus critique. Elle doit être réalisée en moins de 5 secondes après la confirmation de l'arbitre."),
+  sp(60),
+  num("Identifier visuellement ou auditivement le geste de l'arbitre validant le but."),
+  num("Appuyer sur Ctrl + 1 (domicile) ou Ctrl + 2 (visiteur)."),
+  num("Dans la fenêtre de confirmation : saisir le numéro du buteur (ou laisser « Inconnu » si non identifiable immédiatement — à corriger dans les 2 minutes suivantes)."),
+  num("Valider avec Entrée. Le score se met à jour dans l'outil ET sur le bandeau DSK de la régie OBS."),
+  num("Confirmer oralement avec le réalisateur via l'intercom : « But domicile, score X à Y affiché. »"),
+  sp(60),
+  box("💡","Cas du buteur non identifié",[
+    "Si le numéro du buteur n'est pas immédiatement visible, saisir le but avec « Inconnu » pour que le score s'affiche sans délai.",
+    "Identifier le buteur dans les échanges suivants (sur un ralenti de l'officiel statistiques, consultation de la feuille de match) et corriger via la zone Événements."
+  ], LT_GREEN, "2E7D32"),
+  sp(120),
+
+  h3("C.2 — Procédure de saisie d'une exclusion"),
+  num("À l'annonce de l'exclusion par l'arbitre, appuyer sur Ctrl + E."),
+  num("Sélectionner l'équipe concernée dans le menu déroulant."),
+  num("Saisir le numéro du joueur exclu."),
+  num("L'outil calcule automatiquement la fin de l'exclusion (heure actuelle + 2 minutes) et affiche un chronomètre de décompte visible dans l'interface."),
+  num("À la fin des 2 minutes, une alerte sonore retentit — confirmer le retour du joueur manuellement."),
+  num("Si le joueur est exclu une deuxième fois (disqualification) : saisir une seconde exclusion → l'outil bascule automatiquement en statut « Disqualifié »."),
+  sp(120),
+
+  h3("C.3 — Procédure de saisie d'un temps mort d'équipe"),
+  num("Appuyer sur Ctrl + T à l'annonce du temps mort."),
+  num("Sélectionner l'équipe ayant demandé le temps mort."),
+  num("L'outil décrémente le compteur de temps morts disponibles pour cette équipe (3 maximum par match)."),
+  num("Un chronomètre de 60 secondes démarre automatiquement pour suivre la durée du temps mort."),
+  num("En fin de temps mort, pauser le chronomètre principal jusqu'au coup de sifflet de reprise."),
+  sp(60),
+  box("⚠️","Temps mort et chronomètre principal",[
+    "Ne jamais oublier de mettre en pause le chronomètre principal pendant les temps morts, blessures et interruptions de jeu.",
+    "Un chronomètre qui continue à tourner pendant une interruption de 1 minute crée une désynchronisation visible à l'écran."
+  ], LT_RED, "C62828"),
+  sp(200),
+
+  // ─── MODULE D ───
+  moduleHeader("D","Synchronisation avec la régie OBS et protocole N3","10 minutes","Officiel score"),
+  sp(120),
+
+  h3("D.1 — Architecture technique de la synchronisation"),
+  p("L'affichage du score sur le bandeau DSK d'OBS repose sur une Browser Source qui lit en temps réel les données de l'outil de score MHBTV. La synchronisation est donc automatique sous réserve que les conditions techniques soient réunies :"),
+  sp(60),
+  bul("L'outil de score et OBS doivent être sur le même réseau local (Wi-Fi salle ou câble ethernet)."),
+  bul("La Browser Source OBS doit pointer vers l'URL correcte de l'outil MHBTV (vérifier à chaque session que l'URL de la session du jour est bien chargée)."),
+  bul("L'intervalle de rafraîchissement de la Browser Source doit être réglé à 1000 ms maximum (1 seconde) pour que les mises à jour soient quasi-instantanées."),
+  sp(60),
+  box("📋","Test de synchronisation obligatoire",[
+    "Procédure : l'officiel score saisit un but fictif à 0-0 dans l'outil → le réalisateur OBS confirme que le score 1-0 s'affiche sur le bandeau DSK → l'officiel score annule le but fictif → le score revient à 0-0.",
+    "Ce test doit être réalisé au moins 15 minutes avant le début de la diffusion publique."
+  ], LT_BLUE, NAVY),
+  sp(120),
+
+  h3("D.2 — Communication régie / officiels techniques"),
+  p("En dehors de la synchronisation automatique, une communication vocale régulière entre l'officiel score et le réalisateur OBS est obligatoire :"),
+  bul("À chaque but : confirmation orale du score mis à jour."),
+  bul("À chaque exclusion : signal au réalisateur pour qu'il prépare éventuellement un bandeau nominatif du joueur exclu."),
+  bul("À la mi-temps : confirmation que le score de mi-temps est figé et que le chronomètre est remis à zéro pour la seconde période."),
+  bul("En fin de match : confirmation du score final avant l'arrêt du streaming."),
+  sp(120),
+
+  h3("D.3 — Protocole spécifique Nationale 3"),
+  p("Les matchs de Nationale 3 (N3) sont soumis à des exigences renforcées, les données étant susceptibles d'être reprises par la FFHB et les médias partenaires :"),
+  sp(60),
+  bul("Double-check obligatoire du score affiché à la 25e et à la 55e minute (réalisateur + officiel score)."),
+  bul("Toute correction d'erreur sur le score doit être documentée dans le journal d'événements de l'outil avec l'heure et la raison de la correction."),
+  bul("Le rapport de mi-temps doit être transmis aux commentateurs et au Coordinateur général MHBTV dans les 3 minutes suivant le coup de sifflet de mi-temps."),
+  bul("Le rapport de fin de match doit être exporté en PDF et envoyé par email au Coordinateur général et à l'officiel FFHB référent sous 15 minutes après le coup de sifflet final."),
+  bul("En cas de réclamation sur un score affiché, ne jamais corriger sans accord explicite du Coordinateur général — consigner la réclamation dans le journal et attendre validation."),
+  sp(200),
+
+  // ─── MODULE E ───
+  moduleHeader("E","Correction d'erreurs et situations exceptionnelles","8 minutes","Officiel score"),
+  sp(120),
+
+  h3("E.1 — Correction d'un score erroné"),
+  p("Une erreur de saisie sur le score (but attribué à la mauvaise équipe, but en double) doit être corrigée immédiatement et de manière traçable."),
+  sp(60),
+  num("Identifier l'erreur via le journal d'événements (panneau latéral de l'outil)."),
+  num("Cliquer sur l'événement erroné → sélectionner « Supprimer » ou « Corriger »."),
+  num("Ressaisir l'événement correct avec les bonnes informations (équipe, numéro de joueur)."),
+  num("Vérifier que le score affiché dans l'outil correspond au score réel sur le terrain."),
+  num("Appuyer sur F5 pour forcer le rafraîchissement de la Browser Source OBS."),
+  num("Confirmer avec le réalisateur que le score est maintenant correct à l'écran."),
+  num("Documenter la correction dans le journal : heure, événement corrigé, raison."),
+  sp(60),
+  box("⚠️","Correction visible à l'antenne",[
+    "Si la correction entraîne une variation visible du score à l'écran (ex. : score qui passe de 14 à 13 suite à l'annulation d'un but), prévenir le réalisateur AVANT de procéder.",
+    "Le réalisateur peut basculer temporairement sur la scène PAUSE pour masquer le changement, puis revenir après stabilisation."
+  ], LT_RED, "C62828"),
+  sp(120),
+
+  h3("E.2 — Gestion d'une déconnexion de l'outil en cours de match"),
+  p("En cas de perte de connexion ou de crash de l'outil de score, la procédure de secours est la suivante :"),
+  num("Passer immédiatement sur la feuille de match papier (toujours présente sur la table) pour continuer la saisie manuelle."),
+  num("Prévenir le réalisateur OBS : le bandeau DSK peut ne plus se mettre à jour — envisager de le masquer temporairement pour éviter un score figé affiché à l'antenne."),
+  num("Tenter une reconnexion à l'outil (rafraîchir la page, vérifier la connexion réseau)."),
+  num("Dès la reconnexion, ressaisir tous les événements manquants depuis la dernière synchronisation connue."),
+  num("Vérifier la cohérence complète des données avec la feuille papier avant de réactiver le DSK."),
+  sp(120),
+
+  h3("E.3 — Contestation de but par l'arbitre"),
+  p("En handball, un arbitre peut annuler un but accordé dans les secondes suivant son attribution (consultation de vidéo si disponible, ou correction d'une erreur d'arbitrage). Procédure :"),
+  bul("Attendre toujours la décision définitive de l'arbitre de table avant de saisir ou de corriger un but."),
+  bul("Si un but affiché est annulé : procéder à la correction via le journal d'événements immédiatement, prévenir le réalisateur."),
+  bul("Si la décision arbitrale est contestée par un entraîneur : ne pas modifier le score jusqu'à décision officielle de l'arbitre de table — signaler la situation dans le journal."),
+  sp(200),
+
+  h2("Simulation live — évaluation formative"),
+  p("Le formateur déclenche en temps réel une série de 10 événements fictifs sur un match simulé : buts, exclusions, temps morts, correction d'erreur, déconnexion et reconnexion. Les participants doivent :"),
+  bul("Saisir chaque événement dans l'outil dans les 5 secondes"),
+  bul("Communiquer chaque modification au réalisateur fictif (formateur)"),
+  bul("Gérer la correction d'erreur imposée par le formateur en cours de simulation"),
+  bul("Produire le rapport de mi-temps à la fin de la première moitié de la simulation"),
+  p("Critère de validation : 8 événements sur 10 saisis correctement et dans les délais."),
+  sp(200),
+
+  h2("Supports de formation"),
+  bul("Guide utilisateur de l'outil de score MHBTV 2026-2027 (PDF, Drive MHBTV, section Formations)"),
+  bul("Feuille de match de secours version papier (à imprimer et plastifier avant chaque retransmission)"),
+  bul("Tableau des raccourcis clavier version imprimable A5 (à garder sur la table officielle)"),
+  bul("Protocole N3 — Checklist officiel technique version imprimable"),
+  bul("Accès au replay du webinaire (Drive MHBTV, section Formations)"),
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// COUVERTURE PRINCIPALE
+// ═══════════════════════════════════════════════════════════════════
+const COVER = [
+  new Table({
+    width:{size:9026,type:WidthType.DXA}, columnWidths:[9026],
+    rows:[new TableRow({ children:[new TableCell({
+      borders:noBorders, width:{size:9026,type:WidthType.DXA},
+      shading:{fill:NAVY,type:ShadingType.CLEAR},
+      margins:{top:700,bottom:700,left:600,right:600},
+      children:[
+        new Paragraph({alignment:AlignmentType.CENTER, children:[new TextRun({text:"MEYLAN HANDBALL TV",font:"Arial",size:28,bold:true,color:GOLD,allCaps:true})]}),
+        new Paragraph({alignment:AlignmentType.CENTER, spacing:{before:200,after:200}, children:[new TextRun({text:"FORMATIONS INTERNES",font:"Arial",size:44,bold:true,color:WHITE})]}),
+        new Paragraph({alignment:AlignmentType.CENTER, spacing:{before:0,after:160}, children:[new TextRun({text:"Programme de webinaires — Saison 2026-2027",font:"Arial",size:26,color:GOLD,italics:true})]}),
+        new Paragraph({alignment:AlignmentType.CENTER, children:[new TextRun({text:"Cellule Technique & Régie  ·  Cellule Éditoriale & Diffusion",font:"Arial",size:22,color:WHITE})]})
+      ]
+    })]})],
+  }),
+  sp(280),
+  new Table({
+    width:{size:9026,type:WidthType.DXA}, columnWidths:[3008,3010,3008],
+    rows:[new TableRow({ children:[
+      new TableCell({borders,width:{size:3008,type:WidthType.DXA},shading:{fill:LT_BLUE,type:ShadingType.CLEAR},margins:{top:200,bottom:200,left:200,right:200},children:[
+        new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:"🎬",font:"Arial",size:40})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:80},children:[new TextRun({text:"Gestion de direct",font:"Arial",size:22,bold:true,color:NAVY})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:"Réalisateurs & Resp. retransmission",font:"Arial",size:18,color:GRAY,italics:true})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:60},children:[new TextRun({text:"60 – 75 min",font:"Arial",size:20,color:NAVY,bold:true})]})
+      ]}),
+      new TableCell({borders,width:{size:3010,type:WidthType.DXA},shading:{fill:LT_GOLD,type:ShadingType.CLEAR},margins:{top:200,bottom:200,left:200,right:200},children:[
+        new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:"🎙️",font:"Arial",size:40})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:80},children:[new TextRun({text:"Commentaires sportifs",font:"Arial",size:22,bold:true,color:NAVY})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:"Commentateurs MHBTV",font:"Arial",size:18,color:GRAY,italics:true})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:60},children:[new TextRun({text:"55 – 70 min",font:"Arial",size:20,color:NAVY,bold:true})]})
+      ]}),
+      new TableCell({borders,width:{size:3008,type:WidthType.DXA},shading:{fill:LT_BLUE,type:ShadingType.CLEAR},margins:{top:200,bottom:200,left:200,right:200},children:[
+        new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:"📊",font:"Arial",size:40})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:80},children:[new TextRun({text:"Score et temps",font:"Arial",size:22,bold:true,color:NAVY})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:"Officiels techniques",font:"Arial",size:18,color:GRAY,italics:true})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:60},children:[new TextRun({text:"50 – 60 min",font:"Arial",size:20,color:NAVY,bold:true})]})
+      ]})
+    ]})]
+  }),
+  sp(280),
+  new Paragraph({alignment:AlignmentType.CENTER, children:[new TextRun({text:"Document confidentiel — Usage interne MHBTV uniquement  ·  Édition juin 2026",font:"Arial",size:18,color:GRAY,italics:true})]}),
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// ASSEMBLAGE DU DOCUMENT
+// ═══════════════════════════════════════════════════════════════════
+const doc = new Document({
+  numbering:{
+    config:[
+      { reference:"bul0", levels:[{level:0,format:LevelFormat.BULLET,text:"•",alignment:AlignmentType.LEFT,style:{paragraph:{indent:{left:640,hanging:320}}}}] },
+      { reference:"bul1", levels:[{level:0,format:LevelFormat.BULLET,text:"–",alignment:AlignmentType.LEFT,style:{paragraph:{indent:{left:1040,hanging:320}}}}] },
+      { reference:"num0", levels:[{level:0,format:LevelFormat.DECIMAL,text:"%1.",alignment:AlignmentType.LEFT,style:{paragraph:{indent:{left:720,hanging:360}}}}] },
+    ]
+  },
+  styles:{
+    default:{ document:{ run:{ font:"Arial", size:22 } } },
+    paragraphStyles:[
+      { id:"Heading1", name:"Heading 1", basedOn:"Normal", next:"Normal", quickFormat:true, run:{size:32,bold:true,font:"Arial",color:WHITE}, paragraph:{spacing:{before:400,after:200},outlineLevel:0} },
+      { id:"Heading2", name:"Heading 2", basedOn:"Normal", next:"Normal", quickFormat:true, run:{size:26,bold:true,font:"Arial",color:NAVY}, paragraph:{spacing:{before:300,after:100},outlineLevel:1} },
+      { id:"Heading3", name:"Heading 3", basedOn:"Normal", next:"Normal", quickFormat:true, run:{size:23,bold:true,font:"Arial",color:DARK}, paragraph:{spacing:{before:200,after:80},outlineLevel:2} }
+    ]
+  },
+  sections:[{
+    properties:{
+      page:{
+        size:{ width:11906, height:16838 },
+        margin:{ top:1000, right:1000, bottom:1000, left:1000 }
+      }
+    },
+    headers:{
+      default: new Header({ children:[
+        new Paragraph({
+          children:[new TextRun({text:"MHBTV — Formations internes 2026-2027  ·  Usage interne uniquement",font:"Arial",size:18,color:GRAY})],
+          border:{ bottom:{ style:BorderStyle.SINGLE, size:3, color:GOLD, space:2 } },
+          spacing:{ after:100 }
+        })
+      ]})
+    },
+    children:[
+      ...COVER,
+      ...F1,
+      ...F2,
+      ...F3
+    ]
+  }]
+});
+
+Packer.toBuffer(doc).then(buf => {
+  fs.writeFileSync("/mnt/user-data/outputs/MHBTV_Formations_Webinaires_2026-2027_v2.docx", buf);
+  console.log("OK");
+});
