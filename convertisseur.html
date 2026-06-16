@@ -13,39 +13,44 @@
     textarea {
       width: 100%;
       height: 300px;
-      margin-top: 10px;
       font-family: Consolas, monospace;
+      margin-top: 10px;
     }
 
     button {
       margin-top: 10px;
       padding: 10px 15px;
       cursor: pointer;
+      font-size: 16px;
+    }
+
+    input {
+      margin-top: 10px;
     }
   </style>
 
-  <!-- docx -->
-  <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
-
+  <!-- Librairie docx (version navigateur stable) -->
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 </head>
 
 <body>
 
-<h1>Convertisseur JS → Word</h1>
+<h1>Convertisseur JavaScript → Word</h1>
 
-<p>Importe un fichier JS :</p>
+<p>📂 Importer un fichier .js :</p>
 <input type="file" id="fileInput" accept=".js">
 
-<p>Aperçu :</p>
+<p>👀 Aperçu du code :</p>
 <textarea id="preview"></textarea>
 
 <br>
-<button onclick="generateWord()">Télécharger Word</button>
+
+<button onclick="convertToWord()">📄 Télécharger en Word</button>
 
 <script>
 let jsCode = "";
 
-// Lecture fichier JS
+// Charger fichier JS
 document.getElementById("fileInput").addEventListener("change", function(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -60,10 +65,10 @@ document.getElementById("fileInput").addEventListener("change", function(e) {
   reader.readAsText(file);
 });
 
-// Génération + téléchargement Word
-async function generateWord() {
+// Conversion + téléchargement Word
+async function convertToWord() {
   if (!jsCode) {
-    alert("Importe un fichier JS d'abord !");
+    alert("Veuillez importer un fichier JS !");
     return;
   }
 
@@ -88,18 +93,16 @@ async function generateWord() {
     ]
   });
 
-  // 👉 Génération du fichier Word
   const blob = await Packer.toBlob(doc);
 
-  // 👉 Téléchargement automatique
   const url = URL.createObjectURL(blob);
+
   const a = document.createElement("a");
   a.href = url;
   a.download = "code-js.docx";
   document.body.appendChild(a);
   a.click();
 
-  // nettoyage
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
