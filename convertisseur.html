@@ -22,39 +22,32 @@
       padding: 10px 15px;
       cursor: pointer;
     }
-
-    .box {
-      margin-top: 20px;
-    }
   </style>
 
-  <!-- Librairie docx -->
+  <!-- docx -->
   <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
-  <!-- file-saver -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
 </head>
 
 <body>
 
-<h1>Convertisseur JavaScript → Word</h1>
+<h1>Convertisseur JS → Word</h1>
 
 <p>Importe un fichier JS :</p>
 <input type="file" id="fileInput" accept=".js">
 
-<div class="box">
-  <p>Aperçu du code :</p>
-  <textarea id="preview"></textarea>
-</div>
+<p>Aperçu :</p>
+<textarea id="preview"></textarea>
 
-<button onclick="generateWord()">Exporter en Word</button>
+<br>
+<button onclick="generateWord()">Télécharger Word</button>
 
 <script>
 let jsCode = "";
 
-// Lecture du fichier JS
+// Lecture fichier JS
 document.getElementById("fileInput").addEventListener("change", function(e) {
   const file = e.target.files[0];
-
   if (!file) return;
 
   const reader = new FileReader();
@@ -67,16 +60,15 @@ document.getElementById("fileInput").addEventListener("change", function(e) {
   reader.readAsText(file);
 });
 
-// Génération Word
+// Génération + téléchargement Word
 async function generateWord() {
   if (!jsCode) {
-    alert("Veuillez importer un fichier JS d'abord !");
+    alert("Importe un fichier JS d'abord !");
     return;
   }
 
   const { Document, Packer, Paragraph, TextRun } = window.docx;
 
-  // On découpe le code ligne par ligne pour garder la mise en forme
   const lines = jsCode.split("\n");
 
   const doc = new Document({
@@ -96,8 +88,20 @@ async function generateWord() {
     ]
   });
 
+  // 👉 Génération du fichier Word
   const blob = await Packer.toBlob(doc);
-  saveAs(blob, "code-js.docx");
+
+  // 👉 Téléchargement automatique
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "code-js.docx";
+  document.body.appendChild(a);
+  a.click();
+
+  // nettoyage
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 </script>
 
